@@ -3,7 +3,7 @@ tic;
 format long
 warning('off');
 
-rng(11);
+rng(10);
 
 global L gamma ita lambda len M cy_num part_UDV
 
@@ -19,8 +19,8 @@ ita = [ita1 ita1m ita2 ita2m];
 
 %parameters
 N = 1;
-dt = 0.02; % 1/8
-L = 6; % 6
+dt = 0.05; % 1/8
+L = 4; % 6
 len = L;
 U = 4; % 4
 num_w = 100;
@@ -327,7 +327,6 @@ if p == 1
         V = V*VV;
         part_UDV{i} = U;
     end
-    [~,~,U] = L_MGS(U.*D*d2);
     
     if mod(num_L,mul_int)~=0
         warndlg("error!")
@@ -383,8 +382,8 @@ global len
 U = Q';
 U = U(1:len/2,:);
 D = diag(R);
-V = R'./D;
-V = V(:,1:len/2);
+R = R(1:len/2,:);
+V = R'./D';
 end
 
 function [U,D,V] = R_MGS(A)
@@ -392,8 +391,8 @@ global len
 [U,R] = qr(A);
 U = U(:,1:len/2);
 D = diag(R);
-V = R./D';
-V = V(1:len/2,:);
+R = R(1:len/2,:);
+V = R./D;
 end
 
 % update Green function

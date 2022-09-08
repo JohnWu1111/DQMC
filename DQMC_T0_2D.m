@@ -5,7 +5,7 @@ warning('off');
 
 rng(11);
 
-global L gamma ita lambda len M
+global L gamma ita lambda len M cy_num part_UDV
 
 % constants
 gamma1 = 1+sqrt(6)/3;
@@ -23,14 +23,18 @@ dt = 0.05; % 1/8
 L = 4; % 6
 len = L^2;
 U = 4; % 4
-num_w = 100;
-num = 200; % 1000
+num_w = 1000;
+num = 2000; % 1000
 beta = 40;
 M = round(beta/dt);
 lambda = sqrt(U*dt/2);
 re_cal = 10;
 mul_int = 10; % 必须能整除M
 output = num_w/100;
+
+cy_num = M/re_cal;
+part_UDV = cell(cy_num+2,1);
+% {part_L_UD, part_R_UD, part_R_V}
 
 % observables
 n_store = zeros(num,1);
@@ -251,15 +255,15 @@ for n = 1:num
         
         Ek = 0;
         count = 0;
-        for x = 1:L
-            for y = x:L
+        for x = 1:len
+            for y = x:len
                 if Tij(x,y) ~= 0
                     Ek = Ek + G_it(x,y) + G_it(y,x);
                     count = count + 2;
                 end
             end
         end
-        Ek_store(n) = Ek_store(n) + 2*N/L*Ek;
+        Ek_store(n) = Ek_store(n) + 2*N/len*Ek;
         
         Eint_store(n) = Eint_store(n) + U*N*(2*N-1)*mean(real(G_diag) - abs(G_diag).^2 - 1/2);
 %         Eint_store(n) = Eint_store(n) + U*mean((1-G_diag).^2);
@@ -288,8 +292,8 @@ G1 = mean(diag(G_mean))
 
 G2 = 0;
 count = 0;
-for i = 1:L
-    for j = i:L
+for i = 1:len
+    for j = i:len
         if Tij(i,j) ~= 0
             G2 = G2 + G_mean(i,j) + G_mean(j,i);
             count = count + 2;
@@ -301,60 +305,76 @@ G2 = G2/count
 toc;
 
 function [UL, UR] = gen_LR(B,p,PL,PR,mul_int)
-global M
+global M cy_num part_UDV
 count = 0;
+
 num_L = M-p+1;
-cy_L = floor(num_L/mul_int);
-[V,D,U] = L_MGS(PL);
-
-for i = 1:cy_L
-    pos = M - mul_int*(i-1);
-    d2 = B{pos};
-    count = count +1;
-    for j = pos-1:-1:pos-mul_int+1
-        d2 = d2*B{j};
-        count = count +1;
-    end
-    [VV,D,U] = L_MGS(U.*D*d2);
-    V = V*VV;
-end
-if mod(num_L,mul_int)~=0
-    pos = M - mul_int*cy_L;
-    d2 = B{pos};
-    count = count +1;
-    for j = pos-1:-1:p
-        d2 = d2*B{j};     
-        count = count +1;
-    end
-    [~,~,U] = L_MGS(U.*D*d2);
-end
-UL = U;
-
+cy_L = num_L/mul_int;
 num_R = p-1;
-cy_R = floor(num_R/mul_int);
-[U,D,V] = R_MGS(PR);
-for i = 1:cy_R
-    pos = 1 + mul_int*(i-1);
+cy_R = num_R/mul_int;
+
+if p == 1
+    [V,D,U] = L_MGS(PL);
+    for i = 1:cy_L
+        pos = M - mul_int*(i-1);
+        d2 = B{pos};
+        count = count +1;
+        for j = pos-1:-1:pos-mul_int+1
+            d2 = d2*B{j};
+            count = count +1;
+        end
+        [VV,D,U] = L_MGS(U.*D*d2);
+        V = V*VV;
+        part_UDV{i} = U;
+    end
+%     [~,~,U] = L_MGS(U.*D*d2);
+    
+    if mod(num_L,mul_int)~=0
+        warndlg("error!")
+        return
+    end
+    UL = U;
+    
+    [U,D,V] = R_MGS(PR);
+    for i = 1:cy_R
+        pos = 1 + mul_int*(i-1);
+        d2 = B{pos};
+        count = count +1;
+        for j = pos+1:pos+mul_int-1
+            d2 = B{j}*d2;
+            count = count +1;
+        end
+        [U,D,VV] = R_MGS(d2*U.*D');
+        V = VV*V;
+    end
+    
+    part_UDV{cy_num+1} = U.*D';
+    part_UDV{cy_num+2} = V;
+    
+    if mod(num_R,mul_int)~=0
+        warndlg("error!")
+        return
+    end
+    UR = U;
+    
+else
+    UL = part_UDV{cy_L};
+    
+    pos = 1 + mul_int*(cy_R-1);
     d2 = B{pos};
     count = count +1;
     for j = pos+1:pos+mul_int-1
         d2 = B{j}*d2;
         count = count +1;
-    end
-    [U,D,VV] = R_MGS(d2*U.*D');
-    V = VV*V;
+    end    
+    [U,D,VV] = R_MGS(d2*part_UDV{cy_num+1});
+    V = VV*part_UDV{cy_num+2};
+    UR = U;
+    
+    part_UDV{cy_num+1} = U.*D';
+    part_UDV{cy_num+2} = V;
 end
-if mod(num_R,mul_int)~=0
-    pos = 1 + mul_int*cy_R;
-    d2 = B{pos};
-    count = count +1;
-    for j = pos+1:p-1
-        d2 = B{j}*d2;
-        count = count +1;
-    end
-    [U,~,~] = R_MGS(d2*U.*D');
-end
-UR = U;
+
 end
 
 function [V,D,U] = L_MGS(A)
@@ -363,8 +383,8 @@ global len
 U = Q';
 U = U(1:len/2,:);
 D = diag(R);
-V = R'./D;
-V = V(:,1:len/2);
+R = R(1:len/2,:);
+V = R'./D';
 end
 
 function [U,D,V] = R_MGS(A)
@@ -372,8 +392,8 @@ global len
 [U,R] = qr(A);
 U = U(:,1:len/2);
 D = diag(R);
-V = R./D';
-V = V(1:len/2,:);
+R = R(1:len/2,:);
+V = R./D;
 end
 
 % update Green function
